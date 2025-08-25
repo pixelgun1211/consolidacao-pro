@@ -1,1 +1,594 @@
-# consolidacao-pro
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Logística</title>
+    <!-- Inclui Tailwind CSS para um design moderno e responsivo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #111827; color: #f3f4f6; }
+        .loading-spinner { border: 4px solid rgba(255, 255, 255, 0.2); border-left-color: #4f46e5; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .custom-modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.7); justify-content: center; align-items: center; }
+        .custom-modal-content { background-color: #1f2937; padding: 25px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); max-width: 400px; text-align: center; border: 1px solid #374151; }
+        .tooltip { position: absolute; text-align: center; padding: 8px; font: 12px sans-serif; background: rgba(0, 0, 0, 0.8); color: white; border-radius: 4px; pointer-events: none; opacity: 0; transition: opacity 0.2s; }
+        .axis text { fill: #9ca3af; }
+        .axis path, .axis line { stroke: #4b5563; }
+    </style>
+</head>
+<body class="p-8">
+    <div class="container mx-auto">
+        <header class="mb-8">
+            <h1 class="text-4xl font-bold text-white">Dashboard de Operações</h1>
+            <p class="text-gray-400">Visão geral do fluxo de pacotes do dia.</p>
+        </header>
+
+        <!-- Painel de KPIs -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                <h4 class="text-gray-400 text-sm font-medium">Pacotes Recebidos Hoje</h4>
+                <p id="kpi-total-packages" class="text-3xl font-bold text-white mt-2">0</p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                <h4 class="text-gray-400 text-sm font-medium">Veículos em Fila</h4>
+                <p id="kpi-vehicles-waiting" class="text-3xl font-bold text-white mt-2">0</p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                <h4 class="text-gray-400 text-sm font-medium">Veículos Descarregados</h4>
+                <p id="kpi-vehicles-serviced" class="text-3xl font-bold text-white mt-2">0</p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                <h4 class="text-gray-400 text-sm font-medium">Tempo Médio de Espera</h4>
+                <p id="kpi-avg-wait-time" class="text-3xl font-bold text-white mt-2">-- min</p>
+            </div>
+        </div>
+
+        <!-- Formulário e Filas -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+            <div class="lg:col-span-1 p-6 bg-gray-800 rounded-lg shadow-lg border border-gray-700">
+                <h2 class="text-2xl font-semibold text-white mb-4">Registrar Chegada</h2>
+                <form id="entryForm" class="space-y-4">
+                    <div>
+                        <label for="driverName" class="block text-sm font-medium text-gray-400">Nome do Motorista</label>
+                        <input type="text" id="driverName" placeholder="Nome completo" required class="mt-1 w-full p-3 border border-gray-600 bg-gray-700 text-white rounded-md shadow-sm">
+                    </div>
+                    <div>
+                        <label for="company" class="block text-sm font-medium text-gray-400">Transportadora</label>
+                        <select id="company" required class="mt-1 w-full p-3 border border-gray-600 bg-gray-700 text-white rounded-md shadow-sm">
+                            <option value="">Selecione...</option>
+                            <option value="Imediato">Imediato</option>
+                            <option value="Pralog">Pralog</option>
+                            <option value="On Time">On Time</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="packageCount" class="block text-sm font-medium text-gray-400">Quantidade de Pacotes</label>
+                        <input type="number" id="packageCount" placeholder="Ex: 150" required min="0" class="mt-1 w-full p-3 border border-gray-600 bg-gray-700 text-white rounded-md shadow-sm">
+                    </div>
+                    <button type="submit" class="w-full bg-indigo-600 text-white p-3 rounded-md hover:bg-indigo-500 transition shadow-md flex items-center justify-center gap-2">
+                        <span id="entryButtonText">Adicionar à Fila</span>
+                        <div id="entrySpinner" class="hidden loading-spinner"></div>
+                    </button>
+                </form>
+            </div>
+            <div class="lg:col-span-2 p-6 bg-gray-800 rounded-lg shadow-lg border border-gray-700">
+                <h2 class="text-2xl font-semibold text-white mb-4">Controle de Filas</h2>
+                <div id="queuesContainer" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Colunas das filas serão inseridas aqui -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard de Gráficos -->
+        <div class="space-y-6">
+            <div class="p-6 bg-gray-800 rounded-lg shadow-lg border border-gray-700">
+                <h3 class="text-xl font-semibold text-white mb-4">Volume Planejado</h3>
+                <div class="flex items-center gap-4">
+                    <input type="number" id="plannedPackages" placeholder="Ex: 5000" min="0" value="0" class="w-full p-3 border border-gray-600 bg-gray-700 text-white rounded-md shadow-sm flex-grow">
+                    <button id="savePlannedPackagesBtn" class="bg-indigo-600 text-white p-3 rounded-md hover:bg-indigo-500 transition shadow-md whitespace-nowrap">
+                        Definir Meta
+                    </button>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 text-center">
+                    <h3 class="text-xl font-semibold text-white mb-2">Progresso da Meta Diária</h3>
+                    <div id="donutChartContainer" class="flex justify-center items-center h-48"></div>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 text-center">
+                    <h3 class="text-xl font-semibold text-white mb-2">Pacotes por Transportadora</h3>
+                    <div id="companyDonutChartContainer" class="flex justify-center items-center h-48"></div>
+                </div>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                 <h3 class="text-xl font-semibold text-white mb-4 text-center">Entrada de Pacotes por Hora</h3>
+                 <div id="barChartContainer" class="overflow-x-auto">
+                     <div id="barChartPlaceholder" class="text-center text-gray-400 py-16">Aguardando dados...</div>
+                 </div>
+            </div>
+        </div>
+        
+        <!-- Gerenciamento de Dados -->
+        <div class="mt-8 p-6 bg-gray-800 rounded-lg shadow-lg border border-gray-700">
+            <h2 class="text-2xl font-semibold text-white mb-4">Gerenciamento de Dados</h2>
+            <div class="flex flex-col sm:flex-row justify-center gap-4">
+                <button id="exportCsvBtn" class="bg-green-600 text-white p-3 rounded-md hover:bg-green-700 transition shadow-md flex items-center justify-center gap-2">
+                    <span id="exportButtonText">Baixar Planilha (Excel)</span>
+                    <div id="exportSpinner" class="hidden loading-spinner"></div>
+                </button>
+                <button id="resetDayBtn" class="bg-red-600 text-white p-3 rounded-md hover:bg-red-700 transition shadow-md flex items-center justify-center gap-2">
+                    <span id="resetButtonText">Resetar Dados do Dia</span>
+                    <div id="resetSpinner" class="hidden loading-spinner"></div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Notificações -->
+    <div id="customModal" class="custom-modal">
+        <div class="custom-modal-content">
+            <h3 id="modalTitle" class="text-xl font-bold text-white"></h3>
+            <p id="modalMessage" class="my-4 text-gray-300"></p>
+            <p id="modalQueueNumber" class="text-6xl font-bold text-indigo-500 my-4"></p>
+            <div id="modal-buttons" class="flex justify-center gap-4">
+                <button id="modalConfirmBtn" class="bg-indigo-600 text-white py-2 px-6 rounded-md hover:bg-indigo-500">OK</button>
+                <button id="modalCancelBtn" class="bg-gray-500 text-white py-2 px-6 rounded-md hover:bg-gray-600 hidden">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bibliotecas JS -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, onSnapshot, doc, updateDoc, where, Timestamp, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- MÓDULO DE CONFIGURAÇÃO ---
+            const config = {
+                COMPANIES: ["Imediato", "Pralog", "On Time"],
+                COLLECTION_NAME: "cd_simplified_queue_v2",
+                firebaseConfig: {
+                  apiKey: "AIzaSyBc6yYfjjF0C-cLDnlijkKmQ7z_-vCv5xo",
+                  authDomain: "organizador-multitarefas.firebaseapp.com",
+                  projectId: "organizador-multitarefas",
+                  storageBucket: "organizador-multitarefas.appspot.com",
+                  messagingSenderId: "269096200264",
+                  appId: "1:269096200264:web:66162a791ddf6ed824907d",
+                  measurementId: "G-95ZS0TCMLB"
+                }
+            };
+
+            // --- ESTADO DA APLICAÇÃO ---
+            const state = {
+                appId: typeof __app_id !== 'undefined' ? __app_id : 'default-app-id',
+                entries: new Map(),
+                plannedPackages: 0,
+                authReady: false,
+                db: null,
+            };
+
+            // --- ELEMENTOS DA UI ---
+            const ui = {
+                entryForm: document.getElementById('entryForm'),
+                driverNameInput: document.getElementById('driverName'),
+                companySelect: document.getElementById('company'),
+                packageCountInput: document.getElementById('packageCount'),
+                entryButtonText: document.getElementById('entryButtonText'),
+                entrySpinner: document.getElementById('entrySpinner'),
+                queuesContainer: document.getElementById('queuesContainer'),
+                plannedPackagesInput: document.getElementById('plannedPackages'),
+                savePlannedPackagesBtn: document.getElementById('savePlannedPackagesBtn'),
+                exportCsvBtn: document.getElementById('exportCsvBtn'),
+                exportButtonText: document.getElementById('exportButtonText'),
+                exportSpinner: document.getElementById('exportSpinner'),
+                resetDayBtn: document.getElementById('resetDayBtn'),
+                resetButtonText: document.getElementById('resetButtonText'),
+                resetSpinner: document.getElementById('resetSpinner'),
+                kpis: {
+                    totalPackages: document.getElementById('kpi-total-packages'),
+                    vehiclesWaiting: document.getElementById('kpi-vehicles-waiting'),
+                    vehiclesServiced: document.getElementById('kpi-vehicles-serviced'),
+                    avgWaitTime: document.getElementById('kpi-avg-wait-time'),
+                },
+                modal: { 
+                    element: document.getElementById('customModal'), 
+                    title: document.getElementById('modalTitle'), 
+                    message: document.getElementById('modalMessage'), 
+                    queueNumber: document.getElementById('modalQueueNumber'),
+                    confirmBtn: document.getElementById('modalConfirmBtn'),
+                    cancelBtn: document.getElementById('modalCancelBtn')
+                },
+                tooltip: d3.select("body").append("div").attr("class", "tooltip"),
+            };
+
+            // --- SERVIÇOS (LÓGICA) ---
+            const services = {
+                showModal(title, message, options = {}) {
+                    return new Promise((resolve) => {
+                        ui.modal.title.textContent = title;
+                        ui.modal.message.textContent = message;
+                        
+                        if (options.queueNumber) {
+                            ui.modal.queueNumber.textContent = `#${options.queueNumber}`;
+                            ui.modal.queueNumber.classList.remove('hidden');
+                        } else {
+                            ui.modal.queueNumber.classList.add('hidden');
+                        }
+
+                        ui.modal.cancelBtn.classList.toggle('hidden', !options.isConfirm);
+                        ui.modal.confirmBtn.textContent = options.isConfirm ? 'Confirmar' : 'OK';
+                        
+                        ui.modal.element.style.display = 'flex';
+
+                        ui.modal.confirmBtn.onclick = () => {
+                            ui.modal.element.style.display = 'none';
+                            resolve(true);
+                        };
+                        ui.modal.cancelBtn.onclick = () => {
+                            ui.modal.element.style.display = 'none';
+                            resolve(false);
+                        };
+                    });
+                },
+
+                toggleSpinner(isLoading, buttonElements) {
+                    buttonElements.text.classList.toggle('hidden', isLoading);
+                    buttonElements.spinner.classList.toggle('hidden', !isLoading);
+                    buttonElements.spinner.parentElement.disabled = isLoading;
+                },
+
+                async addEntry(driverName, company, packageCount) {
+                    const collectionPath = `artifacts/${state.appId}/public/data/${config.COLLECTION_NAME}`;
+                    
+                    const today = new Date();
+                    today.setHours(0,0,0,0);
+                    const startOfToday = Timestamp.fromDate(today);
+
+                    const q = query(collection(state.db, collectionPath), where("timestamp", ">=", startOfToday));
+                    const snapshot = await getDocs(q);
+                    
+                    let companyCount = 0;
+                    snapshot.forEach(doc => {
+                        if (doc.data().company === company) {
+                            companyCount++;
+                        }
+                    });
+                    const nextQueueNumber = companyCount + 1;
+
+                    await addDoc(collection(state.db, collectionPath), {
+                        driverName,
+                        company,
+                        packageCount,
+                        queueNumber: nextQueueNumber,
+                        status: 'waiting',
+                        timestamp: Timestamp.now(),
+                        completedAt: null
+                    });
+                    return nextQueueNumber;
+                },
+
+                async markAsServiced(id) {
+                    const docPath = `artifacts/${state.appId}/public/data/${config.COLLECTION_NAME}/${id}`;
+                    const entryRef = doc(state.db, docPath);
+                    await updateDoc(entryRef, { status: 'serviced', completedAt: Timestamp.now() });
+                },
+
+                setupFirestoreListener() {
+                    const collectionPath = `artifacts/${state.appId}/public/data/${config.COLLECTION_NAME}`;
+                    const q = query(collection(state.db, collectionPath));
+                    
+                    onSnapshot(q, (snapshot) => {
+                        const todayStr = new Date().toDateString();
+                        snapshot.docChanges().forEach(change => {
+                            const data = { id: change.doc.id, ...change.doc.data() };
+                            if (!data.timestamp || data.timestamp.toDate().toDateString() !== todayStr) {
+                                state.entries.delete(data.id);
+                                return;
+                            }
+                            if (change.type === "removed") {
+                                state.entries.delete(data.id);
+                            } else {
+                                state.entries.set(data.id, data);
+                            }
+                        });
+                        view.renderAll();
+                    });
+                }
+            };
+
+            // --- VISUALIZAÇÃO (RENDERIZAÇÃO) ---
+            const view = {
+                init() {
+                    this.renderQueueContainers();
+                },
+
+                renderAll() {
+                    this.renderQueues();
+                    this.renderKPIs();
+                    this.renderCharts();
+                },
+
+                renderQueueContainers() {
+                    ui.queuesContainer.innerHTML = '';
+                    config.COMPANIES.forEach(company => {
+                        const queueEl = document.createElement('div');
+                        queueEl.className = 'p-6 bg-gray-900 rounded-lg shadow-lg border border-gray-700';
+                        queueEl.innerHTML = `
+                            <h3 class="text-xl font-semibold text-white mb-4">${company}</h3>
+                            <ul id="queue-${company.replace(/\s/g, '')}" class="space-y-3 h-96 overflow-y-auto pr-2">
+                                <li class="text-gray-400 italic">Nenhum motorista na fila.</li>
+                            </ul>
+                        `;
+                        ui.queuesContainer.appendChild(queueEl);
+                    });
+                },
+
+                renderQueues() {
+                    config.COMPANIES.forEach(company => {
+                        const listEl = document.getElementById(`queue-${company.replace(/\s/g, '')}`);
+                        if (listEl) listEl.innerHTML = '<li class="text-gray-400 italic">Nenhum motorista na fila.</li>';
+                    });
+
+                    const waitingEntries = Array.from(state.entries.values())
+                        .filter(e => e.status === 'waiting')
+                        .sort((a, b) => a.timestamp.toDate() - b.timestamp.toDate());
+
+                    waitingEntries.forEach(entry => {
+                        const listEl = document.getElementById(`queue-${entry.company.replace(/\s/g, '')}`);
+                        if (!listEl) return;
+
+                        if (listEl.querySelector('.italic')) listEl.innerHTML = '';
+
+                        const li = document.createElement('li');
+                        li.className = 'bg-gray-700 p-3 rounded-md shadow-sm border border-gray-600 flex justify-between items-center';
+                        li.innerHTML = `
+                            <div>
+                                <div class="font-semibold text-white">#${entry.queueNumber} - ${entry.driverName}</div>
+                                <div class="text-sm text-gray-300">${entry.packageCount.toLocaleString('pt-BR')} pacotes</div>
+                            </div>
+                            <button class="bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-500 text-sm transition">Atendido</button>
+                        `;
+                        li.querySelector('button').addEventListener('click', () => services.markAsServiced(entry.id));
+                        listEl.appendChild(li);
+                    });
+                },
+
+                renderKPIs() {
+                    const allEntries = Array.from(state.entries.values());
+                    const waitingEntries = allEntries.filter(e => e.status === 'waiting');
+                    const servicedEntries = allEntries.filter(e => e.status === 'serviced');
+
+                    ui.kpis.totalPackages.textContent = d3.sum(allEntries, e => e.packageCount).toLocaleString('pt-BR');
+                    ui.kpis.vehiclesWaiting.textContent = waitingEntries.length;
+                    ui.kpis.vehiclesServiced.textContent = servicedEntries.length;
+
+                    if (servicedEntries.length > 0) {
+                        const totalWaitTime = d3.sum(servicedEntries, e => e.completedAt.toDate() - e.timestamp.toDate());
+                        const avgWaitTimeMinutes = (totalWaitTime / servicedEntries.length) / 60000;
+                        ui.kpis.avgWaitTime.textContent = `${Math.round(avgWaitTimeMinutes)} min`;
+                    } else {
+                        ui.kpis.avgWaitTime.textContent = '-- min';
+                    }
+                },
+
+                renderCharts() {
+                    const allEntriesToday = Array.from(state.entries.values());
+                    const totalReceived = d3.sum(allEntriesToday, d => d.packageCount);
+
+                    this.renderGoalDonutChart(totalReceived, state.plannedPackages);
+                    this.renderCompanyDonutChart(allEntriesToday);
+                    this.renderBarChart(allEntriesToday);
+                },
+
+                renderGoalDonutChart(received, planned) {
+                    const container = d3.select("#donutChartContainer");
+                    container.html('');
+                    
+                    const width = 160, height = 160, margin = 5;
+                    const radius = Math.min(width, height) / 2 - margin;
+                    
+                    const svg = container.append("svg").attr("width", width).attr("height", height).append("g").attr("transform", `translate(${width / 2}, ${height / 2})`);
+
+                    if (planned <= 0) {
+                        svg.append("text").attr("text-anchor", "middle").attr("class", "text-gray-400 text-xs").text("Defina uma meta.");
+                        return;
+                    }
+
+                    const remaining = Math.max(0, planned - received);
+                    const data = { Recebidos: received, Restante: remaining };
+                    const color = d3.scaleOrdinal().domain(Object.keys(data)).range(["#22c55e", "#374151"]);
+                    
+                    const pie = d3.pie().value(d => d[1]);
+                    const data_ready = pie(Object.entries(data));
+
+                    svg.selectAll('path').data(data_ready).join('path').attr('d', d3.arc().innerRadius(50).outerRadius(radius)).attr('fill', d => color(d.data[0])).attr("stroke", "#1f2937").style("stroke-width", "4px")
+                        .on("mouseover", (event, d) => ui.tooltip.style("opacity", 1).html(`${d.data[0]}: ${d.data[1].toLocaleString('pt-BR')} pacotes`))
+                        .on("mousemove", (event) => ui.tooltip.style("left", `${event.pageX + 15}px`).style("top", `${event.pageY - 28}px`))
+                        .on("mouseout", () => ui.tooltip.style("opacity", 0));
+
+                    const percent = (received / planned * 100).toFixed(1);
+                    svg.append("text").attr("text-anchor", "middle").attr("dy", "0.35em").attr("class", "text-lg font-bold text-white").text(`${percent}%`);
+                },
+                
+                renderCompanyDonutChart(data) {
+                    const container = d3.select("#companyDonutChartContainer");
+                    container.html('');
+
+                    const companyData = d3.rollup(data, v => d3.sum(v, d => d.packageCount), d => d.company);
+                    if (companyData.size === 0) {
+                        container.append('div').attr('class', 'flex items-center justify-center h-full text-gray-400 text-sm').text('Nenhum pacote registado.');
+                        return;
+                    }
+
+                    const width = 160, height = 160, margin = 5;
+                    const radius = Math.min(width, height) / 2 - margin;
+
+                    const svg = container.append("svg").attr("width", width).attr("height", height).append("g").attr("transform", `translate(${width / 2}, ${height / 2})`);
+
+                    const color = d3.scaleOrdinal().domain(Array.from(companyData.keys())).range(d3.schemeTableau10);
+                    const pie = d3.pie().value(d => d[1]).sort(null);
+                    const data_ready = pie(Array.from(companyData.entries()));
+
+                    svg.selectAll('path').data(data_ready).join('path').attr('d', d3.arc().innerRadius(50).outerRadius(radius)).attr('fill', d => color(d.data[0])).attr("stroke", "#1f2937").style("stroke-width", "4px")
+                        .on("mouseover", (event, d) => ui.tooltip.style("opacity", 1).html(`${d.data[0]}: ${d.data[1].toLocaleString('pt-BR')} pacotes`))
+                        .on("mousemove", (event) => ui.tooltip.style("left", `${event.pageX + 15}px`).style("top", `${event.pageY - 28}px`))
+                        .on("mouseout", () => ui.tooltip.style("opacity", 0));
+                },
+
+                renderBarChart(data) {
+                    const container = d3.select("#barChartContainer");
+                    container.html('');
+
+                    const hourlyData = d3.rollup(data, v => d3.sum(v, d => d.packageCount), d => d.timestamp.toDate().getHours());
+                    
+                    const fullDayData = Array.from({length: 24}, (_, i) => ({ hour: i, load: hourlyData.get(i) || 0 }));
+
+                    const margin = {top: 20, right: 20, bottom: 40, left: 60};
+                    const width = Math.max(container.node().getBoundingClientRect().width, 500) - margin.left - margin.right;
+                    const height = 300 - margin.top - margin.bottom;
+
+                    const svg = container.append("svg").attr("width", width + margin.left + margin.right).attr("height", height + margin.top + margin.bottom).append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+                    
+                    const x = d3.scaleBand().range([0, width]).domain(fullDayData.map(d => `${d.hour.toString().padStart(2,'0')}:00`)).padding(0.2);
+                    const y = d3.scaleLinear().domain([0, d3.max(fullDayData, d => d.load) || 100]).range([height, 0]);
+
+                    svg.append("g").attr("class", "axis").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x)).selectAll("text").style("text-anchor", "end").attr("transform", "rotate(-45)");
+                    svg.append("g").attr("class", "axis").call(d3.axisLeft(y).ticks(5));
+
+                    svg.selectAll("rect").data(fullDayData).join("rect").attr("x", d => x(`${d.hour.toString().padStart(2,'0')}:00`)).attr("y", d => y(d.load)).attr("width", x.bandwidth()).attr("height", d => height - y(d.load)).attr("fill", "#4f46e5")
+                        .on("mouseover", (event, d) => ui.tooltip.style("opacity", 1).html(`${d.hour.toString().padStart(2,'0')}:00 - ${d.load.toLocaleString('pt-BR')} pacotes`))
+                        .on("mousemove", (event) => ui.tooltip.style("left", `${event.pageX + 15}px`).style("top", `${event.pageY - 28}px`))
+                        .on("mouseout", () => ui.tooltip.style("opacity", 0));
+                }
+            };
+
+            // --- INICIALIZAÇÃO DA APLICAÇÃO ---
+            const finalFirebaseConfig = typeof __firebase_config !== 'undefined' 
+                ? JSON.parse(__firebase_config) 
+                : config.firebaseConfig;
+
+            if (!finalFirebaseConfig.apiKey) {
+                return services.showModal("Erro de Configuração", "As chaves de configuração do Firebase não foram encontradas.");
+            }
+            const app = initializeApp(finalFirebaseConfig);
+            state.db = getFirestore(app);
+            const auth = getAuth(app);
+
+            view.init();
+
+            state.plannedPackages = parseInt(localStorage.getItem('plannedPackages') || '0', 10);
+            ui.plannedPackagesInput.value = state.plannedPackages;
+
+            ui.entryForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                services.toggleSpinner(true, { text: ui.entryButtonText, spinner: ui.entrySpinner });
+                try {
+                    const queueNumber = await services.addEntry(ui.driverNameInput.value, ui.companySelect.value, parseFloat(ui.packageCountInput.value));
+                    services.showModal("Sucesso!", `Senha #${queueNumber} registada para ${ui.companySelect.value}.`, { queueNumber });
+                    ui.entryForm.reset();
+                } catch (error) {
+                    console.error("Erro ao adicionar entrada:", error);
+                    services.showModal("Erro", "Não foi possível registar a entrada.");
+                } finally {
+                    services.toggleSpinner(false, { text: ui.entryButtonText, spinner: ui.entrySpinner });
+                }
+            });
+
+            ui.savePlannedPackagesBtn.addEventListener('click', () => {
+                state.plannedPackages = parseInt(localStorage.getItem('plannedPackages') || '0', 10);
+                ui.plannedPackagesInput.value = state.plannedPackages;
+                services.showModal("Sucesso", "Meta diária atualizada!");
+                view.renderCharts();
+            });
+            
+            ui.exportCsvBtn.addEventListener('click', () => {
+                services.toggleSpinner(true, { text: ui.exportButtonText, spinner: ui.exportSpinner });
+                const allEntries = Array.from(state.entries.values());
+                if (allEntries.length === 0) {
+                    services.showModal('Aviso', 'Não há dados para exportar.');
+                    services.toggleSpinner(false, { text: ui.exportButtonText, spinner: ui.exportSpinner });
+                    return;
+                }
+                
+                let csvContent = "Relatório de Operações - " + new Date().toLocaleDateString('pt-BR') + "\n\n";
+                const waitingEntries = allEntries.filter(e => e.status === 'waiting');
+                const servicedEntries = allEntries.filter(e => e.status === 'serviced');
+                const totalPackages = d3.sum(allEntries, e => e.packageCount);
+                let avgWaitTimeMinutes = '--';
+                if (servicedEntries.length > 0) {
+                    const totalWaitTime = d3.sum(servicedEntries, e => e.completedAt.toDate() - e.timestamp.toDate());
+                    avgWaitTimeMinutes = Math.round((totalWaitTime / servicedEntries.length) / 60000);
+                }
+                csvContent += "Resumo do Dia\n";
+                csvContent += `Total de Pacotes Recebidos,"${totalPackages.toLocaleString('pt-BR')}"\n`;
+                csvContent += `Veículos em Fila,"${waitingEntries.length}"\n`;
+                csvContent += `Tempo Médio de Espera (min),"${avgWaitTimeMinutes}"\n\n`;
+                
+                csvContent += "Senha,Motorista,Transportadora,Pacotes,Status,Hora Chegada,Hora Atendimento,Tempo de Espera (min)\n";
+                allEntries.sort((a,b) => a.timestamp.toDate() - b.timestamp.toDate());
+                allEntries.forEach(e => {
+                    const waitTime = e.completedAt ? Math.round((e.completedAt.toDate() - e.timestamp.toDate()) / 60000) : 'N/A';
+                    const row = [e.queueNumber || 'N/A', e.driverName, e.company, e.packageCount, e.status, e.timestamp.toDate().toLocaleString('pt-BR'), e.completedAt ? e.completedAt.toDate().toLocaleString('pt-BR') : 'N/A', waitTime].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
+                    csvContent += row + '\n';
+                });
+
+                const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", `relatorio_logistica_${new Date().toISOString().slice(0,10)}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                services.toggleSpinner(false, { text: ui.exportButtonText, spinner: ui.exportSpinner });
+            });
+
+            ui.resetDayBtn.addEventListener('click', async () => {
+                const confirmed = await services.showModal("Confirmar Ação", "Tem a certeza de que deseja apagar todos os registos do dia? Esta ação é irreversível.", { isConfirm: true });
+                if (!confirmed) return;
+
+                services.toggleSpinner(true, { text: ui.resetButtonText, spinner: ui.resetSpinner });
+                try {
+                    const batch = writeBatch(state.db);
+                    state.entries.forEach(entry => {
+                        const docRef = doc(state.db, `artifacts/${state.appId}/public/data/${config.COLLECTION_NAME}`, entry.id);
+                        batch.delete(docRef);
+                    });
+                    await batch.commit();
+                    localStorage.removeItem('plannedPackages');
+                    ui.plannedPackagesInput.value = 0;
+                    state.plannedPackages = 0;
+                    services.showModal("Sucesso", "Todos os dados do dia foram apagados.");
+                } catch (error) {
+                    console.error("Erro ao resetar dados:", error);
+                    services.showModal("Erro", "Não foi possível apagar os dados.");
+                } finally {
+                    services.toggleSpinner(false, { text: ui.resetButtonText, spinner: ui.resetSpinner });
+                }
+            });
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    if (!state.authReady) {
+                        state.authReady = true;
+                        services.setupFirestoreListener();
+                    }
+                } else {
+                    const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                    const authPromise = token ? signInWithCustomToken(auth, token) : signInAnonymously(auth);
+
+                    authPromise.catch(error => {
+                        console.error("Falha na autenticação:", error);
+                        services.showModal("Erro de Autenticação", `Não foi possível conectar: ${error.message}`);
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
