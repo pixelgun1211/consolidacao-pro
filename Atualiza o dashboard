@@ -499,8 +499,8 @@
             });
 
             ui.savePlannedPackagesBtn.addEventListener('click', () => {
-                state.plannedPackages = parseInt(ui.plannedPackagesInput.value, 10) || 0;
-                localStorage.setItem('plannedPackages', state.plannedPackages);
+                state.plannedPackages = parseInt(localStorage.getItem('plannedPackages') || '0', 10);
+                ui.plannedPackagesInput.value = state.plannedPackages;
                 services.showModal("Sucesso", "Meta diária atualizada!");
                 view.renderCharts();
             });
