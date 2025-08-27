@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -153,13 +153,13 @@
                 COMPANIES: ["Imediato", "Pralog", "On Time", "Hawk"],
                 COLLECTION_NAME: "cd_simplified_queue_v2",
                 firebaseConfig: {
-                  apiKey: "AIzaSyBc6yYfjjF0C-cLDnlijkKmQ7z_-vCv5xo",
-                  authDomain: "organizador-multitarefas.firebaseapp.com",
-                  projectId: "organizador-multitarefas",
-                  storageBucket: "organizador-multitarefas.appspot.com",
-                  messagingSenderId: "269096200264",
-                  appId: "1:269096200264:web:66162a791ddf6ed824907d",
-                  measurementId: "G-95ZS0TCMLB"
+                  apiKey: "AIzaSyAKzzBlt2HW_N9y-65AsFVIqIuSU49M5YY",
+                  authDomain: "consolidacao-pro.firebaseapp.com",
+                  projectId: "consolidacao-pro",
+                  storageBucket: "consolidacao-pro.firebasestorage.app",
+                  messagingSenderId: "629497414322",
+                  appId: "1:629497414322:web:c68899651c7a951fcc7fab",
+                  measurementId: "G-4NW13JQ1LD"
                 }
             };
 
@@ -593,4 +593,5 @@
     </script>
 </body>
 </html>
+
 
