@@ -61,6 +61,7 @@
                             <option value="Imediato">Imediato</option>
                             <option value="Pralog">Pralog</option>
                             <option value="On Time">On Time</option>
+                            <option value="Hawk">Hawk</option>
                         </select>
                     </div>
                     <div>
@@ -75,7 +76,7 @@
             </div>
             <div class="lg:col-span-2 p-6 bg-gray-800 rounded-lg shadow-lg border border-gray-700">
                 <h2 class="text-2xl font-semibold text-white mb-4">Controle de Filas</h2>
-                <div id="queuesContainer" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div id="queuesContainer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                     <!-- Colunas das filas serão inseridas aqui -->
                 </div>
             </div>
@@ -149,7 +150,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             // --- MÓDULO DE CONFIGURAÇÃO ---
             const config = {
-                COMPANIES: ["Imediato", "Pralog", "On Time"],
+                COMPANIES: ["Imediato", "Pralog", "On Time", "Hawk"],
                 COLLECTION_NAME: "cd_simplified_queue_v2",
                 firebaseConfig: {
                   apiKey: "AIzaSyBc6yYfjjF0C-cLDnlijkKmQ7z_-vCv5xo",
@@ -592,3 +593,5 @@
     </script>
 </body>
 </html>
+
+
