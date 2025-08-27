@@ -61,6 +61,7 @@
                             <option value="Imediato">Imediato</option>
                             <option value="Pralog">Pralog</option>
                             <option value="On Time">On Time</option>
+                            <option value="Hawk">Hawk</option>
                         </select>
                     </div>
                     <div>
@@ -75,7 +76,7 @@
             </div>
             <div class="lg:col-span-2 p-6 bg-gray-800 rounded-lg shadow-lg border border-gray-700">
                 <h2 class="text-2xl font-semibold text-white mb-4">Controle de Filas</h2>
-                <div id="queuesContainer" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div id="queuesContainer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                     <!-- Colunas das filas serão inseridas aqui -->
                 </div>
             </div>
@@ -149,7 +150,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             // --- MÓDULO DE CONFIGURAÇÃO ---
             const config = {
-                COMPANIES: ["Imediato", "Pralog", "On Time"],
+                COMPANIES: ["Imediato", "Pralog", "On Time", "Hawk"],
                 COLLECTION_NAME: "cd_simplified_queue_v2",
                 firebaseConfig: {
                   apiKey: "AIzaSyBc6yYfjjF0C-cLDnlijkKmQ7z_-vCv5xo",
@@ -333,36 +334,26 @@
                         if (listEl) listEl.innerHTML = '<li class="text-gray-400 italic">Nenhum motorista na fila.</li>';
                     });
 
-                    const allEntries = Array.from(state.entries.values())
+                    const waitingEntries = Array.from(state.entries.values())
+                        .filter(e => e.status === 'waiting')
                         .sort((a, b) => a.timestamp.toDate() - b.timestamp.toDate());
 
-                    allEntries.forEach(entry => {
+                    waitingEntries.forEach(entry => {
                         const listEl = document.getElementById(`queue-${entry.company.replace(/\s/g, '')}`);
                         if (!listEl) return;
 
                         if (listEl.querySelector('.italic')) listEl.innerHTML = '';
 
                         const li = document.createElement('li');
-                        const isServiced = entry.status === 'serviced';
-                        
-                        li.className = `bg-gray-700 p-3 rounded-md shadow-sm border border-gray-600 flex justify-between items-center ${isServiced ? 'opacity-60' : ''}`;
-                        
-                        let buttonHtml = `<button class="bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-500 text-sm transition">Atendido</button>`;
-                        if (isServiced) {
-                            buttonHtml = `<span class="text-sm font-bold text-red-500">Descarregado</span>`;
-                        }
-
+                        li.className = 'bg-gray-700 p-3 rounded-md shadow-sm border border-gray-600 flex justify-between items-center';
                         li.innerHTML = `
                             <div>
                                 <div class="font-semibold text-white">#${entry.queueNumber} - ${entry.driverName}</div>
                                 <div class="text-sm text-gray-300">${entry.packageCount.toLocaleString('pt-BR')} pacotes</div>
                             </div>
-                            ${buttonHtml}
+                            <button class="bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-500 text-sm transition">Atendido</button>
                         `;
-                        
-                        if (!isServiced) {
-                            li.querySelector('button').addEventListener('click', () => services.markAsServiced(entry.id));
-                        }
+                        li.querySelector('button').addEventListener('click', () => services.markAsServiced(entry.id));
                         listEl.appendChild(li);
                     });
                 },
@@ -602,3 +593,5 @@
     </script>
 </body>
 </html>
+
+
