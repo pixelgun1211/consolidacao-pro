@@ -19,7 +19,13 @@
     </style>
 </head>
 <body class="p-8">
-    <div class="container mx-auto">
+    <div id="main-loader" class="flex items-center justify-center h-screen">
+        <div class="text-center">
+            <div class="loading-spinner mx-auto"></div>
+            <p class="mt-2 text-gray-400">A carregar dados...</p>
+        </div>
+    </div>
+    <div id="main-content" class="container mx-auto hidden">
         <header class="mb-8">
             <h1 class="text-4xl font-bold text-white">Dashboard de Operações</h1>
             <p class="text-gray-400">Visão geral do fluxo de pacotes do dia.</p>
@@ -151,7 +157,7 @@
             // --- MÓDULO DE CONFIGURAÇÃO ---
             const config = {
                 COMPANIES: ["Imediato", "Pralog", "On Time", "Hawk"],
-                COLLECTION_NAME: "cd_simplified_queue_v2",
+                COLLECTION_NAME: "cd_simplified_queue_v3",
                 firebaseConfig: {
                   apiKey: "AIzaSyAKzzBlt2HW_N9y-65AsFVIqIuSU49M5YY",
                   authDomain: "consolidacao-pro.firebaseapp.com",
@@ -174,6 +180,8 @@
 
             // --- ELEMENTOS DA UI ---
             const ui = {
+                mainLoader: document.getElementById('main-loader'),
+                mainContent: document.getElementById('main-content'),
                 entryForm: document.getElementById('entryForm'),
                 driverNameInput: document.getElementById('driverName'),
                 companySelect: document.getElementById('company'),
@@ -334,26 +342,40 @@
                         if (listEl) listEl.innerHTML = '<li class="text-gray-400 italic">Nenhum motorista na fila.</li>';
                     });
 
-                    const waitingEntries = Array.from(state.entries.values())
-                        .filter(e => e.status === 'waiting')
-                        .sort((a, b) => a.timestamp.toDate() - b.timestamp.toDate());
+                    const allEntries = Array.from(state.entries.values())
+                        .sort((a, b) => {
+                            if (a.status === 'waiting' && b.status === 'serviced') return -1;
+                            if (a.status === 'serviced' && b.status === 'waiting') return 1;
+                            return a.timestamp.toDate() - b.timestamp.toDate();
+                        });
 
-                    waitingEntries.forEach(entry => {
+                    allEntries.forEach(entry => {
                         const listEl = document.getElementById(`queue-${entry.company.replace(/\s/g, '')}`);
                         if (!listEl) return;
 
                         if (listEl.querySelector('.italic')) listEl.innerHTML = '';
 
                         const li = document.createElement('li');
-                        li.className = 'bg-gray-700 p-3 rounded-md shadow-sm border border-gray-600 flex justify-between items-center';
+                        const isServiced = entry.status === 'serviced';
+                        
+                        li.className = `bg-gray-700 p-3 rounded-md shadow-sm border border-gray-600 flex justify-between items-center ${isServiced ? 'opacity-50' : ''}`;
+                        
+                        let buttonHtml = `<button class="bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-500 text-sm transition">Atendido</button>`;
+                        if (isServiced) {
+                            buttonHtml = `<span class="text-sm font-bold text-red-500">Descarregado</span>`;
+                        }
+
                         li.innerHTML = `
                             <div>
                                 <div class="font-semibold text-white">#${entry.queueNumber} - ${entry.driverName}</div>
                                 <div class="text-sm text-gray-300">${entry.packageCount.toLocaleString('pt-BR')} pacotes</div>
                             </div>
-                            <button class="bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-500 text-sm transition">Atendido</button>
+                            ${buttonHtml}
                         `;
-                        li.querySelector('button').addEventListener('click', () => services.markAsServiced(entry.id));
+                        
+                        if (!isServiced) {
+                            li.querySelector('button').addEventListener('click', () => services.markAsServiced(entry.id));
+                        }
                         listEl.appendChild(li);
                     });
                 },
@@ -468,14 +490,7 @@
             };
 
             // --- INICIALIZAÇÃO DA APLICAÇÃO ---
-            const finalFirebaseConfig = typeof __firebase_config !== 'undefined' 
-                ? JSON.parse(__firebase_config) 
-                : config.firebaseConfig;
-
-            if (!finalFirebaseConfig.apiKey) {
-                return services.showModal("Erro de Configuração", "As chaves de configuração do Firebase não foram encontradas.");
-            }
-            const app = initializeApp(finalFirebaseConfig);
+            const app = initializeApp(config.firebaseConfig);
             state.db = getFirestore(app);
             const auth = getAuth(app);
 
@@ -575,16 +590,15 @@
 
             onAuthStateChanged(auth, (user) => {
                 if (user) {
+                    ui.mainLoader.classList.add('hidden');
+                    ui.mainContent.classList.remove('hidden');
                     if (!state.authReady) {
                         state.authReady = true;
                         services.setupFirestoreListener();
                     }
                 } else {
-                    const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                    const authPromise = token ? signInWithCustomToken(auth, token) : signInAnonymously(auth);
-
-                    authPromise.catch(error => {
-                        console.error("Falha na autenticação:", error);
+                    signInAnonymously(auth).catch(error => {
+                        console.error("Falha na autenticação anónima:", error);
                         services.showModal("Erro de Autenticação", `Não foi possível conectar: ${error.message}`);
                     });
                 }
