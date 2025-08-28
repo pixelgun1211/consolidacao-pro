@@ -1,609 +1,173 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard de Logística</title>
-    <!-- Inclui Tailwind CSS para um design moderno e responsivo -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Inter', sans-serif; background-color: #111827; color: #f3f4f6; }
-        .loading-spinner { border: 4px solid rgba(255, 255, 255, 0.2); border-left-color: #4f46e5; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .custom-modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.7); justify-content: center; align-items: center; }
-        .custom-modal-content { background-color: #1f2937; padding: 25px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); max-width: 400px; text-align: center; border: 1px solid #374151; }
-        .tooltip { position: absolute; text-align: center; padding: 8px; font: 12px sans-serif; background: rgba(0, 0, 0, 0.8); color: white; border-radius: 4px; pointer-events: none; opacity: 0; transition: opacity 0.2s; }
-        .axis text { fill: #9ca3af; }
-        .axis path, .axis line { stroke: #4b5563; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controle de Filas</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="p-8">
-    <div id="main-loader" class="flex items-center justify-center h-screen">
-        <div class="text-center">
-            <div class="loading-spinner mx-auto"></div>
-            <p class="mt-2 text-gray-400">A carregar dados...</p>
-        </div>
-    </div>
-    <div id="main-content" class="container mx-auto hidden">
-        <header class="mb-8">
-            <h1 class="text-4xl font-bold text-white">Dashboard de Operações</h1>
-            <p class="text-gray-400">Visão geral do fluxo de pacotes do dia.</p>
-        </header>
+<body class="bg-gray-950 text-gray-100 min-h-screen p-6">
 
-        <!-- Painel de KPIs -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-                <h4 class="text-gray-400 text-sm font-medium">Pacotes Recebidos Hoje</h4>
-                <p id="kpi-total-packages" class="text-3xl font-bold text-white mt-2">0</p>
-            </div>
-            <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-                <h4 class="text-gray-400 text-sm font-medium">Veículos em Fila</h4>
-                <p id="kpi-vehicles-waiting" class="text-3xl font-bold text-white mt-2">0</p>
-            </div>
-            <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-                <h4 class="text-gray-400 text-sm font-medium">Veículos Descarregados</h4>
-                <p id="kpi-vehicles-serviced" class="text-3xl font-bold text-white mt-2">0</p>
-            </div>
-            <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-                <h4 class="text-gray-400 text-sm font-medium">Tempo Médio de Espera</h4>
-                <p id="kpi-avg-wait-time" class="text-3xl font-bold text-white mt-2">-- min</p>
-            </div>
-        </div>
+  <div class="max-w-6xl mx-auto space-y-10">
+    <header class="text-center">
+      <h1 class="text-3xl font-bold">📋 Controle de Filas</h1>
+    </header>
 
-        <!-- Formulário e Filas -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-            <div class="lg:col-span-1 p-6 bg-gray-800 rounded-lg shadow-lg border border-gray-700">
-                <h2 class="text-2xl font-semibold text-white mb-4">Registrar Chegada</h2>
-                <form id="entryForm" class="space-y-4">
-                    <div>
-                        <label for="driverName" class="block text-sm font-medium text-gray-400">Nome do Motorista</label>
-                        <input type="text" id="driverName" placeholder="Nome completo" required class="mt-1 w-full p-3 border border-gray-600 bg-gray-700 text-white rounded-md shadow-sm">
-                    </div>
-                    <div>
-                        <label for="company" class="block text-sm font-medium text-gray-400">Transportadora</label>
-                        <select id="company" required class="mt-1 w-full p-3 border border-gray-600 bg-gray-700 text-white rounded-md shadow-sm">
-                            <option value="">Selecione...</option>
-                            <option value="Imediato">Imediato</option>
-                            <option value="Pralog">Pralog</option>
-                            <option value="On Time">On Time</option>
-                            <option value="Hawk">Hawk</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="packageCount" class="block text-sm font-medium text-gray-400">Quantidade de Pacotes</label>
-                        <input type="number" id="packageCount" placeholder="Ex: 150" required min="0" class="mt-1 w-full p-3 border border-gray-600 bg-gray-700 text-white rounded-md shadow-sm">
-                    </div>
-                    <button type="submit" class="w-full bg-indigo-600 text-white p-3 rounded-md hover:bg-indigo-500 transition shadow-md flex items-center justify-center gap-2">
-                        <span id="entryButtonText">Adicionar à Fila</span>
-                        <div id="entrySpinner" class="hidden loading-spinner"></div>
-                    </button>
-                </form>
-            </div>
-            <div class="lg:col-span-2 p-6 bg-gray-800 rounded-lg shadow-lg border border-gray-700">
-                <h2 class="text-2xl font-semibold text-white mb-4">Controle de Filas</h2>
-                <div id="queuesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <!-- Colunas das filas serão inseridas aqui -->
-                </div>
-            </div>
-        </div>
+    <!-- Formulário de Entrada -->
+    <section class="bg-gray-900 p-6 rounded-lg shadow-lg border border-gray-700">
+      <h2 class="text-xl font-semibold mb-4">Registrar Motorista</h2>
+      <form id="entryForm" class="space-y-4">
+        <input type="text" id="nome" placeholder="Nome do Motorista" class="w-full p-2 rounded bg-gray-800 border border-gray-600">
+        <input type="text" id="placa" placeholder="Placa do Caminhão" class="w-full p-2 rounded bg-gray-800 border border-gray-600">
+        <select id="transportadora" class="w-full p-2 rounded bg-gray-800 border border-gray-600">
+          <option value="">Selecione a Transportadora</option>
+          <option value="1">Transportadora A</option>
+          <option value="2">Transportadora B</option>
+          <option value="3">Transportadora C</option>
+          <option value="4">Transportadora D</option>
+        </select>
+        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded">Adicionar à Fila</button>
+      </form>
+    </section>
 
-        <!-- Dashboard de Gráficos -->
-        <div class="space-y-6">
-            <div class="p-6 bg-gray-800 rounded-lg shadow-lg border border-gray-700">
-                <h3 class="text-xl font-semibold text-white mb-4">Volume Planejado</h3>
-                <div class="flex items-center gap-4">
-                    <input type="number" id="plannedPackages" placeholder="Ex: 5000" min="0" value="0" class="w-full p-3 border border-gray-600 bg-gray-700 text-white rounded-md shadow-sm flex-grow">
-                    <button id="savePlannedPackagesBtn" class="bg-indigo-600 text-white p-3 rounded-md hover:bg-indigo-500 transition shadow-md whitespace-nowrap">
-                        Definir Meta
-                    </button>
-                </div>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 text-center">
-                    <h3 class="text-xl font-semibold text-white mb-2">Progresso da Meta Diária</h3>
-                    <div id="donutChartContainer" class="flex justify-center items-center h-48"></div>
-                </div>
-                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 text-center">
-                    <h3 class="text-xl font-semibold text-white mb-2">Pacotes por Transportadora</h3>
-                    <div id="companyDonutChartContainer" class="flex justify-center items-center h-48"></div>
-                </div>
-            </div>
-            <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-                 <h3 class="text-xl font-semibold text-white mb-4 text-center">Entrada de Pacotes por Hora</h3>
-                 <div id="barChartContainer" class="overflow-x-auto">
-                     <div id="barChartPlaceholder" class="text-center text-gray-400 py-16">Aguardando dados...</div>
-                 </div>
-            </div>
-        </div>
-        
-        <!-- Gerenciamento de Dados -->
-        <div class="mt-8 p-6 bg-gray-800 rounded-lg shadow-lg border border-gray-700">
-            <h2 class="text-2xl font-semibold text-white mb-4">Gerenciamento de Dados</h2>
-            <div class="flex flex-col sm:flex-row justify-center gap-4">
-                <button id="exportCsvBtn" class="bg-green-600 text-white p-3 rounded-md hover:bg-green-700 transition shadow-md flex items-center justify-center gap-2">
-                    <span id="exportButtonText">Baixar Planilha (Excel)</span>
-                    <div id="exportSpinner" class="hidden loading-spinner"></div>
-                </button>
-                <button id="resetDayBtn" class="bg-red-600 text-white p-3 rounded-md hover:bg-red-700 transition shadow-md flex items-center justify-center gap-2">
-                    <span id="resetButtonText">Resetar Dados do Dia</span>
-                    <div id="resetSpinner" class="hidden loading-spinner"></div>
-                </button>
-            </div>
-        </div>
-    </div>
+    <!-- Painel das Filas -->
+    <section>
+      <h2 class="text-xl font-semibold mb-4">Filas</h2>
+      <div id="queuesContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6"></div>
+    </section>
+  </div>
 
-    <!-- Modal para Notificações -->
-    <div id="customModal" class="custom-modal">
-        <div class="custom-modal-content">
-            <h3 id="modalTitle" class="text-xl font-bold text-white"></h3>
-            <p id="modalMessage" class="my-4 text-gray-300"></p>
-            <p id="modalQueueNumber" class="text-6xl font-bold text-indigo-500 my-4"></p>
-            <div id="modal-buttons" class="flex justify-center gap-4">
-                <button id="modalConfirmBtn" class="bg-indigo-600 text-white py-2 px-6 rounded-md hover:bg-indigo-500">OK</button>
-                <button id="modalCancelBtn" class="bg-gray-500 text-white py-2 px-6 rounded-md hover:bg-gray-600 hidden">Cancelar</button>
-            </div>
-        </div>
-    </div>
+  <!-- Toast -->
+  <div id="toast" class="hidden fixed bottom-5 right-5 bg-gray-800 text-white px-4 py-2 rounded shadow-lg"></div>
 
-    <!-- Bibliotecas JS -->
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, query, onSnapshot, doc, updateDoc, where, Timestamp, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+  <script type="module">
+    // =================== Firebase ===================
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
-        document.addEventListener('DOMContentLoaded', () => {
-            // --- MÓDULO DE CONFIGURAÇÃO ---
-            const config = {
-                COMPANIES: ["Imediato", "Pralog", "On Time", "Hawk"],
-                COLLECTION_NAME: "cd_simplified_queue_v3",
-                firebaseConfig: {
-                  apiKey: "AIzaSyAKzzBlt2HW_N9y-65AsFVIqIuSU49M5YY",
-                  authDomain: "consolidacao-pro.firebaseapp.com",
-                  projectId: "consolidacao-pro",
-                  storageBucket: "consolidacao-pro.firebasestorage.app",
-                  messagingSenderId: "629497414322",
-                  appId: "1:629497414322:web:c68899651c7a951fcc7fab",
-                  measurementId: "G-4NW13JQ1LD"
-                }
-            };
+    const firebaseConfig = {
+      apiKey: "SUA_API_KEY",
+      authDomain: "SEU_PROJETO.firebaseapp.com",
+      projectId: "SEU_PROJETO",
+      storageBucket: "SEU_PROJETO.appspot.com",
+      messagingSenderId: "SENDER_ID",
+      appId: "APP_ID"
+    };
 
-            // --- ESTADO DA APLICAÇÃO ---
-            const state = {
-                appId: typeof __app_id !== 'undefined' ? __app_id : 'default-app-id',
-                entries: new Map(),
-                plannedPackages: 0,
-                authReady: false,
-                db: null,
-            };
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
 
-            // --- ELEMENTOS DA UI ---
-            const ui = {
-                mainLoader: document.getElementById('main-loader'),
-                mainContent: document.getElementById('main-content'),
-                entryForm: document.getElementById('entryForm'),
-                driverNameInput: document.getElementById('driverName'),
-                companySelect: document.getElementById('company'),
-                packageCountInput: document.getElementById('packageCount'),
-                entryButtonText: document.getElementById('entryButtonText'),
-                entrySpinner: document.getElementById('entrySpinner'),
-                queuesContainer: document.getElementById('queuesContainer'),
-                plannedPackagesInput: document.getElementById('plannedPackages'),
-                savePlannedPackagesBtn: document.getElementById('savePlannedPackagesBtn'),
-                exportCsvBtn: document.getElementById('exportCsvBtn'),
-                exportButtonText: document.getElementById('exportButtonText'),
-                exportSpinner: document.getElementById('exportSpinner'),
-                resetDayBtn: document.getElementById('resetDayBtn'),
-                resetButtonText: document.getElementById('resetButtonText'),
-                resetSpinner: document.getElementById('resetSpinner'),
-                kpis: {
-                    totalPackages: document.getElementById('kpi-total-packages'),
-                    vehiclesWaiting: document.getElementById('kpi-vehicles-waiting'),
-                    vehiclesServiced: document.getElementById('kpi-vehicles-serviced'),
-                    avgWaitTime: document.getElementById('kpi-avg-wait-time'),
-                },
-                modal: { 
-                    element: document.getElementById('customModal'), 
-                    title: document.getElementById('modalTitle'), 
-                    message: document.getElementById('modalMessage'), 
-                    queueNumber: document.getElementById('modalQueueNumber'),
-                    confirmBtn: document.getElementById('modalConfirmBtn'),
-                    cancelBtn: document.getElementById('modalCancelBtn')
-                },
-                tooltip: d3.select("body").append("div").attr("class", "tooltip"),
-            };
+    // =================== Estado ===================
+    const state = {
+      transportadoras: [
+        { id: "1", nome: "Transportadora A" },
+        { id: "2", nome: "Transportadora B" },
+        { id: "3", nome: "Transportadora C" },
+        { id: "4", nome: "Transportadora D" }
+      ],
+      db: db
+    };
 
-            // --- SERVIÇOS (LÓGICA) ---
-            const services = {
-                showModal(title, message, options = {}) {
-                    return new Promise((resolve) => {
-                        ui.modal.title.textContent = title;
-                        ui.modal.message.textContent = message;
-                        
-                        if (options.queueNumber) {
-                            ui.modal.queueNumber.textContent = `#${options.queueNumber}`;
-                            ui.modal.queueNumber.classList.remove('hidden');
-                        } else {
-                            ui.modal.queueNumber.classList.add('hidden');
-                        }
-
-                        ui.modal.cancelBtn.classList.toggle('hidden', !options.isConfirm);
-                        ui.modal.confirmBtn.textContent = options.isConfirm ? 'Confirmar' : 'OK';
-                        
-                        ui.modal.element.style.display = 'flex';
-
-                        ui.modal.confirmBtn.onclick = () => {
-                            ui.modal.element.style.display = 'none';
-                            resolve(true);
-                        };
-                        ui.modal.cancelBtn.onclick = () => {
-                            ui.modal.element.style.display = 'none';
-                            resolve(false);
-                        };
-                    });
-                },
-
-                toggleSpinner(isLoading, buttonElements) {
-                    buttonElements.text.classList.toggle('hidden', isLoading);
-                    buttonElements.spinner.classList.toggle('hidden', !isLoading);
-                    buttonElements.spinner.parentElement.disabled = isLoading;
-                },
-
-                async addEntry(driverName, company, packageCount) {
-                    const collectionPath = `artifacts/${state.appId}/public/data/${config.COLLECTION_NAME}`;
-                    
-                    const today = new Date();
-                    today.setHours(0,0,0,0);
-                    const startOfToday = Timestamp.fromDate(today);
-
-                    const q = query(collection(state.db, collectionPath), where("timestamp", ">=", startOfToday));
-                    const snapshot = await getDocs(q);
-                    
-                    let companyCount = 0;
-                    snapshot.forEach(doc => {
-                        if (doc.data().company === company) {
-                            companyCount++;
-                        }
-                    });
-                    const nextQueueNumber = companyCount + 1;
-
-                    await addDoc(collection(state.db, collectionPath), {
-                        driverName,
-                        company,
-                        packageCount,
-                        queueNumber: nextQueueNumber,
-                        status: 'waiting',
-                        timestamp: Timestamp.now(),
-                        completedAt: null
-                    });
-                    return nextQueueNumber;
-                },
-
-                async markAsServiced(id) {
-                    const docPath = `artifacts/${state.appId}/public/data/${config.COLLECTION_NAME}/${id}`;
-                    const entryRef = doc(state.db, docPath);
-                    await updateDoc(entryRef, { status: 'serviced', completedAt: Timestamp.now() });
-                },
-
-                setupFirestoreListener() {
-                    const collectionPath = `artifacts/${state.appId}/public/data/${config.COLLECTION_NAME}`;
-                    const q = query(collection(state.db, collectionPath));
-                    
-                    onSnapshot(q, (snapshot) => {
-                        const todayStr = new Date().toDateString();
-                        snapshot.docChanges().forEach(change => {
-                            const data = { id: change.doc.id, ...change.doc.data() };
-                            if (!data.timestamp || data.timestamp.toDate().toDateString() !== todayStr) {
-                                state.entries.delete(data.id);
-                                return;
-                            }
-                            if (change.type === "removed") {
-                                state.entries.delete(data.id);
-                            } else {
-                                state.entries.set(data.id, data);
-                            }
-                        });
-                        view.renderAll();
-                    });
-                }
-            };
-
-            // --- VISUALIZAÇÃO (RENDERIZAÇÃO) ---
-            const view = {
-                init() {
-                    this.renderQueueContainers();
-                },
-
-                renderAll() {
-                    this.renderQueues();
-                    this.renderKPIs();
-                    this.renderCharts();
-                },
-
-                renderQueueContainers() {
-                    ui.queuesContainer.innerHTML = '';
-                    config.COMPANIES.forEach(company => {
-                        const queueEl = document.createElement('div');
-                        queueEl.className = 'p-6 bg-gray-900 rounded-lg shadow-lg border border-gray-700';
-                        queueEl.innerHTML = `
-                            <h3 class="text-xl font-semibold text-white mb-4">${company}</h3>
-                            <ul id="queue-${company.replace(/\s/g, '')}" class="space-y-3 h-96 overflow-y-auto pr-2">
-                                <li class="text-gray-400 italic">Nenhum motorista na fila.</li>
-                            </ul>
-                        `;
-                        ui.queuesContainer.appendChild(queueEl);
-                    });
-                },
-
-                renderQueues() {
-                    config.COMPANIES.forEach(company => {
-                        const listEl = document.getElementById(`queue-${company.replace(/\s/g, '')}`);
-                        if (listEl) listEl.innerHTML = '<li class="text-gray-400 italic">Nenhum motorista na fila.</li>';
-                    });
-
-                    const allEntries = Array.from(state.entries.values())
-                        .sort((a, b) => {
-                            if (a.status === 'waiting' && b.status === 'serviced') return -1;
-                            if (a.status === 'serviced' && b.status === 'waiting') return 1;
-                            return a.timestamp.toDate() - b.timestamp.toDate();
-                        });
-
-                    allEntries.forEach(entry => {
-                        const listEl = document.getElementById(`queue-${entry.company.replace(/\s/g, '')}`);
-                        if (!listEl) return;
-
-                        if (listEl.querySelector('.italic')) listEl.innerHTML = '';
-
-                        const li = document.createElement('li');
-                        const isServiced = entry.status === 'serviced';
-                        
-                        li.className = `bg-gray-700 p-3 rounded-md shadow-sm border border-gray-600 flex justify-between items-center ${isServiced ? 'opacity-50' : ''}`;
-                        
-                        let buttonHtml = `<button class="bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-500 text-sm transition">Atendido</button>`;
-                        if (isServiced) {
-                            buttonHtml = `<span class="text-sm font-bold text-red-500">Descarregado</span>`;
-                        }
-
-                        li.innerHTML = `
-                            <div>
-                                <div class="font-semibold text-white">#${entry.queueNumber} - ${entry.driverName}</div>
-                                <div class="text-sm text-gray-300">${entry.packageCount.toLocaleString('pt-BR')} pacotes</div>
-                            </div>
-                            ${buttonHtml}
-                        `;
-                        
-                        if (!isServiced) {
-                            li.querySelector('button').addEventListener('click', () => services.markAsServiced(entry.id));
-                        }
-                        listEl.appendChild(li);
-                    });
-                },
-
-                renderKPIs() {
-                    const allEntries = Array.from(state.entries.values());
-                    const waitingEntries = allEntries.filter(e => e.status === 'waiting');
-                    const servicedEntries = allEntries.filter(e => e.status === 'serviced');
-
-                    ui.kpis.totalPackages.textContent = d3.sum(allEntries, e => e.packageCount).toLocaleString('pt-BR');
-                    ui.kpis.vehiclesWaiting.textContent = waitingEntries.length;
-                    ui.kpis.vehiclesServiced.textContent = servicedEntries.length;
-
-                    if (servicedEntries.length > 0) {
-                        const totalWaitTime = d3.sum(servicedEntries, e => e.completedAt.toDate() - e.timestamp.toDate());
-                        const avgWaitTimeMinutes = (totalWaitTime / servicedEntries.length) / 60000;
-                        ui.kpis.avgWaitTime.textContent = `${Math.round(avgWaitTimeMinutes)} min`;
-                    } else {
-                        ui.kpis.avgWaitTime.textContent = '-- min';
-                    }
-                },
-
-                renderCharts() {
-                    const allEntriesToday = Array.from(state.entries.values());
-                    const totalReceived = d3.sum(allEntriesToday, d => d.packageCount);
-
-                    this.renderGoalDonutChart(totalReceived, state.plannedPackages);
-                    this.renderCompanyDonutChart(allEntriesToday);
-                    this.renderBarChart(allEntriesToday);
-                },
-
-                renderGoalDonutChart(received, planned) {
-                    const container = d3.select("#donutChartContainer");
-                    container.html('');
-                    
-                    const width = 160, height = 160, margin = 5;
-                    const radius = Math.min(width, height) / 2 - margin;
-                    
-                    const svg = container.append("svg").attr("width", width).attr("height", height).append("g").attr("transform", `translate(${width / 2}, ${height / 2})`);
-
-                    if (planned <= 0) {
-                        svg.append("text").attr("text-anchor", "middle").attr("class", "text-gray-400 text-xs").text("Defina uma meta.");
-                        return;
-                    }
-
-                    const remaining = Math.max(0, planned - received);
-                    const data = { Recebidos: received, Restante: remaining };
-                    const color = d3.scaleOrdinal().domain(Object.keys(data)).range(["#22c55e", "#374151"]);
-                    
-                    const pie = d3.pie().value(d => d[1]);
-                    const data_ready = pie(Object.entries(data));
-
-                    svg.selectAll('path').data(data_ready).join('path').attr('d', d3.arc().innerRadius(50).outerRadius(radius)).attr('fill', d => color(d.data[0])).attr("stroke", "#1f2937").style("stroke-width", "4px")
-                        .on("mouseover", (event, d) => ui.tooltip.style("opacity", 1).html(`${d.data[0]}: ${d.data[1].toLocaleString('pt-BR')} pacotes`))
-                        .on("mousemove", (event) => ui.tooltip.style("left", `${event.pageX + 15}px`).style("top", `${event.pageY - 28}px`))
-                        .on("mouseout", () => ui.tooltip.style("opacity", 0));
-
-                    const percent = (received / planned * 100).toFixed(1);
-                    svg.append("text").attr("text-anchor", "middle").attr("dy", "0.35em").attr("class", "text-lg font-bold text-white").text(`${percent}%`);
-                },
-                
-                renderCompanyDonutChart(data) {
-                    const container = d3.select("#companyDonutChartContainer");
-                    container.html('');
-
-                    const companyData = d3.rollup(data, v => d3.sum(v, d => d.packageCount), d => d.company);
-                    if (companyData.size === 0) {
-                        container.append('div').attr('class', 'flex items-center justify-center h-full text-gray-400 text-sm').text('Nenhum pacote registado.');
-                        return;
-                    }
-
-                    const width = 160, height = 160, margin = 5;
-                    const radius = Math.min(width, height) / 2 - margin;
-
-                    const svg = container.append("svg").attr("width", width).attr("height", height).append("g").attr("transform", `translate(${width / 2}, ${height / 2})`);
-
-                    const color = d3.scaleOrdinal().domain(Array.from(companyData.keys())).range(d3.schemeTableau10);
-                    const pie = d3.pie().value(d => d[1]).sort(null);
-                    const data_ready = pie(Array.from(companyData.entries()));
-
-                    svg.selectAll('path').data(data_ready).join('path').attr('d', d3.arc().innerRadius(50).outerRadius(radius)).attr('fill', d => color(d.data[0])).attr("stroke", "#1f2937").style("stroke-width", "4px")
-                        .on("mouseover", (event, d) => ui.tooltip.style("opacity", 1).html(`${d.data[0]}: ${d.data[1].toLocaleString('pt-BR')} pacotes`))
-                        .on("mousemove", (event) => ui.tooltip.style("left", `${event.pageX + 15}px`).style("top", `${event.pageY - 28}px`))
-                        .on("mouseout", () => ui.tooltip.style("opacity", 0));
-                },
-
-                renderBarChart(data) {
-                    const container = d3.select("#barChartContainer");
-                    container.html('');
-
-                    const hourlyData = d3.rollup(data, v => d3.sum(v, d => d.packageCount), d => d.timestamp.toDate().getHours());
-                    
-                    const fullDayData = Array.from({length: 24}, (_, i) => ({ hour: i, load: hourlyData.get(i) || 0 }));
-
-                    const margin = {top: 20, right: 20, bottom: 40, left: 60};
-                    const width = Math.max(container.node().getBoundingClientRect().width, 500) - margin.left - margin.right;
-                    const height = 300 - margin.top - margin.bottom;
-
-                    const svg = container.append("svg").attr("width", width + margin.left + margin.right).attr("height", height + margin.top + margin.bottom).append("g").attr("transform", `translate(${margin.left},${margin.top})`);
-                    
-                    const x = d3.scaleBand().range([0, width]).domain(fullDayData.map(d => `${d.hour.toString().padStart(2,'0')}:00`)).padding(0.2);
-                    const y = d3.scaleLinear().domain([0, d3.max(fullDayData, d => d.load) || 100]).range([height, 0]);
-
-                    svg.append("g").attr("class", "axis").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x)).selectAll("text").style("text-anchor", "end").attr("transform", "rotate(-45)");
-                    svg.append("g").attr("class", "axis").call(d3.axisLeft(y).ticks(5));
-
-                    svg.selectAll("rect").data(fullDayData).join("rect").attr("x", d => x(`${d.hour.toString().padStart(2,'0')}:00`)).attr("y", d => y(d.load)).attr("width", x.bandwidth()).attr("height", d => height - y(d.load)).attr("fill", "#4f46e5")
-                        .on("mouseover", (event, d) => ui.tooltip.style("opacity", 1).html(`${d.hour.toString().padStart(2,'0')}:00 - ${d.load.toLocaleString('pt-BR')} pacotes`))
-                        .on("mousemove", (event) => ui.tooltip.style("left", `${event.pageX + 15}px`).style("top", `${event.pageY - 28}px`))
-                        .on("mouseout", () => ui.tooltip.style("opacity", 0));
-                }
-            };
-
-            // --- INICIALIZAÇÃO DA APLICAÇÃO ---
-            const app = initializeApp(config.firebaseConfig);
-            state.db = getFirestore(app);
-            const auth = getAuth(app);
-
-            view.init();
-
-            state.plannedPackages = parseInt(localStorage.getItem('plannedPackages') || '0', 10);
-            ui.plannedPackagesInput.value = state.plannedPackages;
-
-            ui.entryForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                services.toggleSpinner(true, { text: ui.entryButtonText, spinner: ui.entrySpinner });
-                try {
-                    const queueNumber = await services.addEntry(ui.driverNameInput.value, ui.companySelect.value, parseFloat(ui.packageCountInput.value));
-                    services.showModal("Sucesso!", `Senha #${queueNumber} registada para ${ui.companySelect.value}.`, { queueNumber });
-                    ui.entryForm.reset();
-                } catch (error) {
-                    console.error("Erro ao adicionar entrada:", error);
-                    services.showModal("Erro", "Não foi possível registar a entrada.");
-                } finally {
-                    services.toggleSpinner(false, { text: ui.entryButtonText, spinner: ui.entrySpinner });
-                }
-            });
-
-            ui.savePlannedPackagesBtn.addEventListener('click', () => {
-                state.plannedPackages = parseInt(ui.plannedPackagesInput.value, 10) || 0;
-                localStorage.setItem('plannedPackages', state.plannedPackages);
-                services.showModal("Sucesso", "Meta diária atualizada!");
-                view.renderCharts();
-            });
-            
-            ui.exportCsvBtn.addEventListener('click', () => {
-                services.toggleSpinner(true, { text: ui.exportButtonText, spinner: ui.exportSpinner });
-                const allEntries = Array.from(state.entries.values());
-                if (allEntries.length === 0) {
-                    services.showModal('Aviso', 'Não há dados para exportar.');
-                    services.toggleSpinner(false, { text: ui.exportButtonText, spinner: ui.exportSpinner });
-                    return;
-                }
-                
-                let csvContent = "Relatório de Operações - " + new Date().toLocaleDateString('pt-BR') + "\n\n";
-                const waitingEntries = allEntries.filter(e => e.status === 'waiting');
-                const servicedEntries = allEntries.filter(e => e.status === 'serviced');
-                const totalPackages = d3.sum(allEntries, e => e.packageCount);
-                let avgWaitTimeMinutes = '--';
-                if (servicedEntries.length > 0) {
-                    const totalWaitTime = d3.sum(servicedEntries, e => e.completedAt.toDate() - e.timestamp.toDate());
-                    avgWaitTimeMinutes = Math.round((totalWaitTime / servicedEntries.length) / 60000);
-                }
-                csvContent += "Resumo do Dia\n";
-                csvContent += `Total de Pacotes Recebidos,"${totalPackages.toLocaleString('pt-BR')}"\n`;
-                csvContent += `Veículos em Fila,"${waitingEntries.length}"\n`;
-                csvContent += `Tempo Médio de Espera (min),"${avgWaitTimeMinutes}"\n\n`;
-                
-                csvContent += "Senha,Motorista,Transportadora,Pacotes,Status,Hora Chegada,Hora Atendimento,Tempo de Espera (min)\n";
-                allEntries.sort((a,b) => a.timestamp.toDate() - b.timestamp.toDate());
-                allEntries.forEach(e => {
-                    const waitTime = e.completedAt ? Math.round((e.completedAt.toDate() - e.timestamp.toDate()) / 60000) : 'N/A';
-                    const row = [e.queueNumber || 'N/A', e.driverName, e.company, e.packageCount, e.status, e.timestamp.toDate().toLocaleString('pt-BR'), e.completedAt ? e.completedAt.toDate().toLocaleString('pt-BR') : 'N/A', waitTime].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
-                    csvContent += row + '\n';
-                });
-
-                const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement("a");
-                const url = URL.createObjectURL(blob);
-                link.setAttribute("href", url);
-                link.setAttribute("download", `relatorio_logistica_${new Date().toISOString().slice(0,10)}.csv`);
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                services.toggleSpinner(false, { text: ui.exportButtonText, spinner: ui.exportSpinner });
-            });
-
-            ui.resetDayBtn.addEventListener('click', async () => {
-                const confirmed = await services.showModal("Confirmar Ação", "Tem a certeza de que deseja apagar todos os registos do dia? Esta ação é irreversível.", { isConfirm: true });
-                if (!confirmed) return;
-
-                services.toggleSpinner(true, { text: ui.resetButtonText, spinner: ui.resetSpinner });
-                try {
-                    const batch = writeBatch(state.db);
-                    state.entries.forEach(entry => {
-                        const docRef = doc(state.db, `artifacts/${state.appId}/public/data/${config.COLLECTION_NAME}`, entry.id);
-                        batch.delete(docRef);
-                    });
-                    await batch.commit();
-                    localStorage.removeItem('plannedPackages');
-                    ui.plannedPackagesInput.value = 0;
-                    state.plannedPackages = 0;
-                    services.showModal("Sucesso", "Todos os dados do dia foram apagados.");
-                } catch (error) {
-                    console.error("Erro ao resetar dados:", error);
-                    services.showModal("Erro", "Não foi possível apagar os dados.");
-                } finally {
-                    services.toggleSpinner(false, { text: ui.resetButtonText, spinner: ui.resetSpinner });
-                }
-            });
-
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    ui.mainLoader.classList.add('hidden');
-                    ui.mainContent.classList.remove('hidden');
-                    if (!state.authReady) {
-                        state.authReady = true;
-                        services.setupFirestoreListener();
-                    }
-                } else {
-                    signInAnonymously(auth).catch(error => {
-                        console.error("Falha na autenticação anónima:", error);
-                        services.showModal("Erro de Autenticação", `Não foi possível conectar: ${error.message}`);
-                    });
-                }
-            });
+    // =================== UI ===================
+    const ui = {
+      entryForm: document.getElementById("entryForm"),
+      queuesContainer: document.getElementById("queuesContainer"),
+      showToast: (msg, type = "info") => {
+        const toast = document.getElementById("toast");
+        toast.textContent = msg;
+        toast.className = `fixed bottom-5 right-5 px-4 py-2 rounded shadow-lg text-white ${type === "success" ? "bg-green-600" : type === "error" ? "bg-red-600" : "bg-gray-800"}`;
+        toast.classList.remove("hidden");
+        setTimeout(() => toast.classList.add("hidden"), 3000);
+      },
+      renderQueueContainers: () => {
+        ui.queuesContainer.innerHTML = "";
+        state.transportadoras.forEach(t => {
+          const queueEl = document.createElement("div");
+          queueEl.id = `queue-${t.id}`;
+          queueEl.className = "p-6 bg-gray-900 rounded-lg shadow-lg border border-gray-700 flex flex-col h-full";
+          queueEl.innerHTML = `
+            <h2 class="text-xl font-semibold mb-4">${t.nome}</h2>
+            <ul id="list-${t.id}" class="space-y-2"></ul>
+          `;
+          ui.queuesContainer.appendChild(queueEl);
         });
-    </script>
+      }
+    };
+
+    // =================== Services ===================
+    const services = {
+      addEntry: async (nome, placa, transportadora) => {
+        const collectionPath = `filas/${transportadora}/entradas`;
+        const snapshot = await onSnapshot(query(collection(db, collectionPath), orderBy("createdAt", "desc")));
+        let nextQueueNumber = 1;
+        snapshot.forEach(doc => {
+          nextQueueNumber = doc.data().senha + 1;
+          return;
+        });
+
+        await addDoc(collection(state.db, collectionPath), {
+          nome,
+          placa,
+          senha: nextQueueNumber,
+          createdAt: new Date()
+        });
+        return nextQueueNumber;
+      },
+      setupFirestoreListener: () => {
+        state.transportadoras.forEach(t => {
+          const q = query(collection(db, `filas/${t.id}/entradas`), orderBy("createdAt", "asc"));
+          onSnapshot(q, (snapshot) => {
+            const listEl = document.getElementById(`list-${t.id}`);
+            listEl.innerHTML = "";
+            snapshot.forEach(doc => {
+              const li = document.createElement("li");
+              const d = doc.data();
+              li.textContent = `${d.senha} - ${d.nome} (${d.placa})`;
+              listEl.appendChild(li);
+            });
+          });
+        });
+      }
+    };
+
+    // =================== Inicialização ===================
+    ui.renderQueueContainers();
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        services.setupFirestoreListener();
+
+        // 🔑 só agora ativamos o form
+        ui.entryForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const nome = document.getElementById("nome").value.trim();
+          const placa = document.getElementById("placa").value.trim().toUpperCase();
+          const transportadora = document.getElementById("transportadora").value;
+
+          try {
+            const senha = await services.addEntry(nome, placa, transportadora);
+            ui.showToast(`Senha gerada: ${senha}`, "success");
+            ui.entryForm.reset();
+          } catch (error) {
+            ui.showToast("Erro ao registrar entrada", "error");
+            console.error("Erro ao adicionar entrada:", error);
+          }
+        });
+
+      } else {
+        const token = typeof __initial_auth_token !== "undefined" ? __initial_auth_token : null;
+        const authPromise = token ? signInWithCustomToken(auth, token) : signInAnonymously(auth);
+        authPromise.catch(error => {
+          ui.showToast("Erro de autenticação", "error");
+          console.error("Erro de autenticação:", error);
+        });
+      }
+    });
+  </script>
 </body>
 </html>
