@@ -150,7 +150,7 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, query, onSnapshot, doc, updateDoc, where, Timestamp, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -159,13 +159,13 @@
                 COMPANIES: ["Imediato", "Pralog", "On Time", "Hawk"],
                 COLLECTION_NAME: "cd_shared_queue_v1", // NOME DA COLEÇÃO PARTILHADA
                 firebaseConfig: {
-                  apiKey: "AIzaSyAKzzBlt2HW_N9y-65AsFVIqIuSU49M5YY",
-                  authDomain: "consolidacao-pro.firebaseapp.com",
-                  projectId: "consolidacao-pro",
-                  storageBucket: "consolidacao-pro.firebasestorage.app",
-                  messagingSenderId: "629497414322",
-                  appId: "1:629497414322:web:c68899651c7a951fcc7fab",
-                  measurementId: "G-4NW13JQ1LD"
+                  apiKey: "AIzaSyAYQs0PBdu4xXG3QrfkHlCMSx3ffSQPAHg",
+                  authDomain: "consolidacao-86ffc.firebaseapp.com",
+                  projectId: "consolidacao-86ffc",
+                  storageBucket: "consolidacao-86ffc.firebasestorage.app",
+                  messagingSenderId: "579827881426",
+                  appId: "1:579827881426:web:f802c332f663bc8ed5640b",
+                  measurementId: "G-N2S0H05R2X"
                 }
             };
 
@@ -482,121 +482,148 @@
             };
 
             // --- INICIALIZAÇÃO DA APLICAÇÃO ---
-            const app = initializeApp(config.firebaseConfig);
-            state.db = getFirestore(app);
-            const auth = getAuth(app);
-
-            view.init();
-
-            state.plannedPackages = parseInt(localStorage.getItem('plannedPackages') || '0', 10);
-            ui.plannedPackagesInput.value = state.plannedPackages;
-
-            ui.entryForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                services.toggleSpinner(true, { text: ui.entryButtonText, spinner: ui.entrySpinner });
-                try {
-                    const queueNumber = await services.addEntry(ui.driverNameInput.value, ui.companySelect.value, parseFloat(ui.packageCountInput.value));
-                    services.showModal("Sucesso!", `Senha #${queueNumber} registada para ${ui.companySelect.value}.`, { queueNumber });
-                    ui.entryForm.reset();
-                } catch (error) {
-                    console.error("Erro ao adicionar entrada:", error);
-                    services.showModal("Erro", "Não foi possível registar a entrada.");
-                } finally {
-                    services.toggleSpinner(false, { text: ui.entryButtonText, spinner: ui.entrySpinner });
+            async function initializeApp() {
+                // CORREÇÃO: Lógica de inicialização mais robusta
+                let finalFirebaseConfig = config.firebaseConfig;
+                if (typeof __firebase_config !== 'undefined') {
+                    try {
+                        finalFirebaseConfig = JSON.parse(__firebase_config);
+                    } catch (e) {
+                        console.error("Erro ao analisar a configuração do Firebase do ambiente.", e);
+                        services.showModal("Erro Crítico", "A configuração do ambiente do Firebase é inválida.");
+                        return;
+                    }
                 }
-            });
 
-            ui.savePlannedPackagesBtn.addEventListener('click', () => {
-                state.plannedPackages = parseInt(ui.plannedPackagesInput.value, 10) || 0;
-                localStorage.setItem('plannedPackages', state.plannedPackages);
-                services.showModal("Sucesso", "Meta diária atualizada!");
-                view.renderCharts();
-            });
-            
-            ui.exportCsvBtn.addEventListener('click', () => {
-                services.toggleSpinner(true, { text: ui.exportButtonText, spinner: ui.exportSpinner });
-                const allEntries = Array.from(state.entries.values());
-                if (allEntries.length === 0) {
-                    services.showModal('Aviso', 'Não há dados para exportar.');
-                    services.toggleSpinner(false, { text: ui.exportButtonText, spinner: ui.exportSpinner });
-                    return;
-                }
-                
-                let csvContent = "Relatório de Operações - " + new Date().toLocaleDateString('pt-BR') + "\n\n";
-                const waitingEntries = allEntries.filter(e => e.status === 'waiting');
-                const servicedEntries = allEntries.filter(e => e.status === 'serviced');
-                const totalPackages = d3.sum(allEntries, e => e.packageCount);
-                let avgWaitTimeMinutes = '--';
-                if (servicedEntries.length > 0) {
-                    const totalWaitTime = d3.sum(servicedEntries, e => e.completedAt.toDate() - e.timestamp.toDate());
-                    avgWaitTimeMinutes = Math.round((totalWaitTime / servicedEntries.length) / 60000);
-                }
-                csvContent += "Resumo do Dia\n";
-                csvContent += `Total de Pacotes Recebidos,"${totalPackages.toLocaleString('pt-BR')}"\n`;
-                csvContent += `Veículos em Fila,"${waitingEntries.length}"\n`;
-                csvContent += `Tempo Médio de Espera (min),"${avgWaitTimeMinutes}"\n\n`;
-                
-                csvContent += "Senha,Motorista,Transportadora,Pacotes,Status,Hora Chegada,Hora Atendimento,Tempo de Espera (min)\n";
-                allEntries.sort((a,b) => a.timestamp.toDate() - b.timestamp.toDate());
-                allEntries.forEach(e => {
-                    const waitTime = e.completedAt ? Math.round((e.completedAt.toDate() - e.timestamp.toDate()) / 60000) : 'N/A';
-                    const row = [e.queueNumber || 'N/A', e.driverName, e.company, e.packageCount, e.status, e.timestamp.toDate().toLocaleString('pt-BR'), e.completedAt ? e.completedAt.toDate().toLocaleString('pt-BR') : 'N/A', waitTime].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
-                    csvContent += row + '\n';
+                const app = initializeApp(finalFirebaseConfig);
+                state.db = getFirestore(app);
+                const auth = getAuth(app);
+
+                view.init();
+
+                state.plannedPackages = parseInt(localStorage.getItem('plannedPackages') || '0', 10);
+                ui.plannedPackagesInput.value = state.plannedPackages;
+
+                // Event Listeners
+                ui.entryForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    services.toggleSpinner(true, { text: ui.entryButtonText, spinner: ui.entrySpinner });
+                    try {
+                        const queueNumber = await services.addEntry(ui.driverNameInput.value, ui.companySelect.value, parseFloat(ui.packageCountInput.value));
+                        services.showModal("Sucesso!", `Senha #${queueNumber} registada para ${ui.companySelect.value}.`, { queueNumber });
+                        ui.entryForm.reset();
+                    } catch (error) {
+                        console.error("Erro ao adicionar entrada:", error);
+                        services.showModal("Erro", "Não foi possível registar a entrada.");
+                    } finally {
+                        services.toggleSpinner(false, { text: ui.entryButtonText, spinner: ui.entrySpinner });
+                    }
                 });
 
-                const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement("a");
-                const url = URL.createObjectURL(blob);
-                link.setAttribute("href", url);
-                link.setAttribute("download", `relatorio_logistica_${new Date().toISOString().slice(0,10)}.csv`);
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                services.toggleSpinner(false, { text: ui.exportButtonText, spinner: ui.exportSpinner });
-            });
-
-            ui.resetDayBtn.addEventListener('click', async () => {
-                const confirmed = await services.showModal("Confirmar Ação", "Tem a certeza de que deseja apagar todos os registos do dia? Esta ação é irreversível.", { isConfirm: true });
-                if (!confirmed) return;
-
-                services.toggleSpinner(true, { text: ui.resetButtonText, spinner: ui.resetSpinner });
-                try {
-                    const batch = writeBatch(state.db);
-                    state.entries.forEach(entry => {
-                        const docRef = doc(state.db, `artifacts/${state.appId}/public/data/${config.COLLECTION_NAME}`, entry.id);
-                        batch.delete(docRef);
-                    });
-                    await batch.commit();
-                    localStorage.removeItem('plannedPackages');
-                    ui.plannedPackagesInput.value = 0;
-                    state.plannedPackages = 0;
-                    services.showModal("Sucesso", "Todos os dados do dia foram apagados.");
-                } catch (error) {
-                    console.error("Erro ao resetar dados:", error);
-                    services.showModal("Erro", "Não foi possível apagar os dados.");
-                } finally {
-                    services.toggleSpinner(false, { text: ui.resetButtonText, spinner: ui.resetSpinner });
-                }
-            });
-
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    ui.mainLoader.classList.add('hidden');
-                    ui.mainContent.classList.remove('hidden');
-                    if (!state.authReady) {
-                        state.authReady = true;
-                        services.setupFirestoreListener();
+                ui.savePlannedPackagesBtn.addEventListener('click', () => {
+                    state.plannedPackages = parseInt(ui.plannedPackagesInput.value, 10) || 0;
+                    localStorage.setItem('plannedPackages', state.plannedPackages);
+                    services.showModal("Sucesso", "Meta diária atualizada!");
+                    view.renderCharts();
+                });
+                
+                ui.exportCsvBtn.addEventListener('click', () => {
+                    services.toggleSpinner(true, { text: ui.exportButtonText, spinner: ui.exportSpinner });
+                    const allEntries = Array.from(state.entries.values());
+                    if (allEntries.length === 0) {
+                        services.showModal('Aviso', 'Não há dados para exportar.');
+                        services.toggleSpinner(false, { text: ui.exportButtonText, spinner: ui.exportSpinner });
+                        return;
                     }
-                } else {
-                    signInAnonymously(auth).catch(error => {
-                        console.error("Falha na autenticação anónima:", error);
-                        services.showModal("Erro de Autenticação", `Não foi possível conectar: ${error.message}`);
+                    
+                    let csvContent = "Relatório de Operações - " + new Date().toLocaleDateString('pt-BR') + "\n\n";
+                    const waitingEntries = allEntries.filter(e => e.status === 'waiting');
+                    const servicedEntries = allEntries.filter(e => e.status === 'serviced');
+                    const totalPackages = d3.sum(allEntries, e => e.packageCount);
+                    let avgWaitTimeMinutes = '--';
+                    if (servicedEntries.length > 0) {
+                        const totalWaitTime = d3.sum(servicedEntries, e => e.completedAt.toDate() - e.timestamp.toDate());
+                        avgWaitTimeMinutes = Math.round((totalWaitTime / servicedEntries.length) / 60000);
+                    }
+                    csvContent += "Resumo do Dia\n";
+                    csvContent += `Total de Pacotes Recebidos,"${totalPackages.toLocaleString('pt-BR')}"\n`;
+                    csvContent += `Veículos em Fila,"${waitingEntries.length}"\n`;
+                    csvContent += `Tempo Médio de Espera (min),"${avgWaitTimeMinutes}"\n\n`;
+                    
+                    csvContent += "Senha,Motorista,Transportadora,Pacotes,Status,Hora Chegada,Hora Atendimento,Tempo de Espera (min)\n";
+                    allEntries.sort((a,b) => a.timestamp.toDate() - b.timestamp.toDate());
+                    allEntries.forEach(e => {
+                        const waitTime = e.completedAt ? Math.round((e.completedAt.toDate() - e.timestamp.toDate()) / 60000) : 'N/A';
+                        const row = [e.queueNumber || 'N/A', e.driverName, e.company, e.packageCount, e.status, e.timestamp.toDate().toLocaleString('pt-BR'), e.completedAt ? e.completedAt.toDate().toLocaleString('pt-BR') : 'N/A', waitTime].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
+                        csvContent += row + '\n';
                     });
-                }
-            });
+
+                    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement("a");
+                    const url = URL.createObjectURL(blob);
+                    link.setAttribute("href", url);
+                    link.setAttribute("download", `relatorio_logistica_${new Date().toISOString().slice(0,10)}.csv`);
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    services.toggleSpinner(false, { text: ui.exportButtonText, spinner: ui.exportSpinner });
+                });
+
+                ui.resetDayBtn.addEventListener('click', async () => {
+                    const confirmed = await services.showModal("Confirmar Ação", "Tem a certeza de que deseja apagar todos os registos do dia? Esta ação é irreversível.", { isConfirm: true });
+                    if (!confirmed) return;
+
+                    services.toggleSpinner(true, { text: ui.resetButtonText, spinner: ui.resetSpinner });
+                    try {
+                        const collectionPath = config.COLLECTION_NAME;
+                        const q = query(collection(state.db, collectionPath));
+                        const snapshot = await getDocs(q);
+                        const batch = writeBatch(state.db);
+                        snapshot.forEach(doc => {
+                            batch.delete(doc.ref);
+                        });
+                        await batch.commit();
+                        
+                        localStorage.removeItem('plannedPackages');
+                        ui.plannedPackagesInput.value = 0;
+                        state.plannedPackages = 0;
+                        services.showModal("Sucesso", "Todos os dados do dia foram apagados.");
+                    } catch (error) {
+                        console.error("Erro ao resetar dados:", error);
+                        services.showModal("Erro", "Não foi possível apagar os dados.");
+                    } finally {
+                        services.toggleSpinner(false, { text: ui.resetButtonText, spinner: ui.resetSpinner });
+                    }
+                });
+
+                // Lógica de Autenticação
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        ui.mainLoader.classList.add('hidden');
+                        ui.mainContent.classList.remove('hidden');
+                        if (!state.authReady) {
+                            state.authReady = true;
+                            services.setupFirestoreListener();
+                        }
+                    } else {
+                         try {
+                            const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                            if (token) {
+                                await signInWithCustomToken(auth, token);
+                            } else {
+                                await signInAnonymously(auth);
+                            }
+                        } catch(error) {
+                             console.error("Falha na autenticação:", error);
+                             services.showModal("Erro de Autenticação", `Não foi possível conectar: ${error.message}`);
+                        }
+                    }
+                });
+            }
+
+            initializeApp();
         });
     </script>
 </body>
 </html>
-
