@@ -150,14 +150,14 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, query, onSnapshot, doc, updateDoc, where, Timestamp, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         document.addEventListener('DOMContentLoaded', () => {
             // --- MÓDULO DE CONFIGURAÇÃO ---
             const config = {
                 COMPANIES: ["Imediato", "Pralog", "On Time", "Hawk"],
-                COLLECTION_NAME: "cd_simplified_queue_v3",
+                COLLECTION_NAME: "cd_shared_queue_v1", // NOME DA COLEÇÃO PARTILHADA
                 firebaseConfig: {
                   apiKey: "AIzaSyAKzzBlt2HW_N9y-65AsFVIqIuSU49M5YY",
                   authDomain: "consolidacao-pro.firebaseapp.com",
@@ -171,7 +171,6 @@
 
             // --- ESTADO DA APLICAÇÃO ---
             const state = {
-                appId: typeof __app_id !== 'undefined' ? __app_id : 'default-app-id',
                 entries: new Map(),
                 plannedPackages: 0,
                 authReady: false,
@@ -247,26 +246,19 @@
                 toggleSpinner(isLoading, buttonElements) {
                     buttonElements.text.classList.toggle('hidden', isLoading);
                     buttonElements.spinner.classList.toggle('hidden', !isLoading);
-                    buttonElements.spinner.parentElement.disabled = isLoading;
+                    if(buttonElements.spinner.parentElement) buttonElements.spinner.parentElement.disabled = isLoading;
                 },
 
                 async addEntry(driverName, company, packageCount) {
-                    const collectionPath = `artifacts/${state.appId}/public/data/${config.COLLECTION_NAME}`;
+                    const collectionPath = config.COLLECTION_NAME;
                     
                     const today = new Date();
                     today.setHours(0,0,0,0);
                     const startOfToday = Timestamp.fromDate(today);
 
-                    const q = query(collection(state.db, collectionPath), where("timestamp", ">=", startOfToday));
+                    const q = query(collection(state.db, collectionPath), where("timestamp", ">=", startOfToday), where("company", "==", company));
                     const snapshot = await getDocs(q);
-                    
-                    let companyCount = 0;
-                    snapshot.forEach(doc => {
-                        if (doc.data().company === company) {
-                            companyCount++;
-                        }
-                    });
-                    const nextQueueNumber = companyCount + 1;
+                    const nextQueueNumber = snapshot.size + 1;
 
                     await addDoc(collection(state.db, collectionPath), {
                         driverName,
@@ -279,15 +271,15 @@
                     });
                     return nextQueueNumber;
                 },
-
+                
                 async markAsServiced(id) {
-                    const docPath = `artifacts/${state.appId}/public/data/${config.COLLECTION_NAME}/${id}`;
+                    const docPath = `${config.COLLECTION_NAME}/${id}`;
                     const entryRef = doc(state.db, docPath);
                     await updateDoc(entryRef, { status: 'serviced', completedAt: Timestamp.now() });
                 },
 
                 setupFirestoreListener() {
-                    const collectionPath = `artifacts/${state.appId}/public/data/${config.COLLECTION_NAME}`;
+                    const collectionPath = config.COLLECTION_NAME;
                     const q = query(collection(state.db, collectionPath));
                     
                     onSnapshot(q, (snapshot) => {
@@ -385,16 +377,16 @@
                     const waitingEntries = allEntries.filter(e => e.status === 'waiting');
                     const servicedEntries = allEntries.filter(e => e.status === 'serviced');
 
-                    ui.kpis.totalPackages.textContent = d3.sum(allEntries, e => e.packageCount).toLocaleString('pt-BR');
-                    ui.kpis.vehiclesWaiting.textContent = waitingEntries.length;
-                    ui.kpis.vehiclesServiced.textContent = servicedEntries.length;
+                    if(ui.kpis.totalPackages) ui.kpis.totalPackages.textContent = d3.sum(allEntries, e => e.packageCount).toLocaleString('pt-BR');
+                    if(ui.kpis.vehiclesWaiting) ui.kpis.vehiclesWaiting.textContent = waitingEntries.length;
+                    if(ui.kpis.vehiclesServiced) ui.kpis.vehiclesServiced.textContent = servicedEntries.length;
 
                     if (servicedEntries.length > 0) {
                         const totalWaitTime = d3.sum(servicedEntries, e => e.completedAt.toDate() - e.timestamp.toDate());
                         const avgWaitTimeMinutes = (totalWaitTime / servicedEntries.length) / 60000;
-                        ui.kpis.avgWaitTime.textContent = `${Math.round(avgWaitTimeMinutes)} min`;
+                        if(ui.kpis.avgWaitTime) ui.kpis.avgWaitTime.textContent = `${Math.round(avgWaitTimeMinutes)} min`;
                     } else {
-                        ui.kpis.avgWaitTime.textContent = '-- min';
+                        if(ui.kpis.avgWaitTime) ui.kpis.avgWaitTime.textContent = '-- min';
                     }
                 },
 
@@ -607,3 +599,4 @@
     </script>
 </body>
 </html>
+
